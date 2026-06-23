@@ -55,5 +55,22 @@
     "prune",
     "rename",
     "connector"
+  ],
+  "routes": [
+    "fs://host/dir/command/prune_empty",
+    "fs://host/dir/query/list",
+    "fs://host/duplicates/query/find",
+    "fs://host/file/command/move",
+    "fs://host/file/command/move_to_dir",
+    "fs://host/file/command/write_text",
+    "fs://host/file/query/blob",
+    "fs://host/file/query/read",
+    "fs://host/path/query/stat"
+  ],
+  "uriSchemes": [
+    "fs"
+  ],
+  "adapterKinds": [
+    "local-function"
   ]
 }
