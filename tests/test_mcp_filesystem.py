@@ -21,6 +21,7 @@ from urirun_connector_mcp_filesystem import (
     read_file,
     stat_path,
     urirun_bindings,
+    write_blob_file,
     write_text_file,
 )
 from urirun_connector_mcp_filesystem.core import DEFAULT_MAX_BYTES
@@ -31,6 +32,7 @@ ROUTE_BLOB = "fs://host/file/query/blob"
 ROUTE_STAT = "fs://host/path/query/stat"
 ROUTE_PRUNE_EMPTY = "fs://host/dir/command/prune_empty"
 ROUTE_WRITE_TEXT = "fs://host/file/command/write_text"
+ROUTE_WRITE_BLOB = "fs://host/file/command/write_blob"
 ROUTE_DUPLICATES = "fs://host/duplicates/query/find"
 ROUTE_MOVE = "fs://host/file/command/move_to_dir"
 ROUTE_MOVE_FILE = "fs://host/file/command/move"
@@ -41,6 +43,7 @@ ALL_ROUTES = {
     ROUTE_STAT,
     ROUTE_PRUNE_EMPTY,
     ROUTE_WRITE_TEXT,
+    ROUTE_WRITE_BLOB,
     ROUTE_DUPLICATES,
     ROUTE_MOVE,
     ROUTE_MOVE_FILE,
@@ -232,6 +235,42 @@ def test_write_text_file_refuses_escape_and_existing_destination(sandbox):
     assert (sandbox / "exists.txt").read_text(encoding="utf-8") == "old"
 
 
+def test_write_blob_file_dry_run_and_execute(sandbox):
+    raw = b"%PDF fake"
+    dry = write_blob_file("2026-06/invoice.pdf", "JVBERiBmYWtl")
+    assert dry["ok"] is True
+    assert dry["dryRun"] is True
+    assert dry["written"] is False
+    assert dry["target"] == "2026-06/invoice.pdf"
+    assert dry["bytes"] == len(raw)
+    assert dry["mime"] == "application/pdf"
+    assert not (sandbox / "2026-06" / "invoice.pdf").exists()
+
+    written = write_blob_file("2026-06/invoice.pdf", "JVBERiBmYWtl", dry_run=False, mode="0644")
+    assert written["ok"] is True
+    assert written["written"] is True
+    assert written["sha256"]
+    assert (sandbox / "2026-06" / "invoice.pdf").read_bytes() == raw
+    assert oct((sandbox / "2026-06" / "invoice.pdf").stat().st_mode & 0o777) == "0o644"
+
+
+def test_write_blob_file_refuses_escape_existing_destination_and_invalid_base64(sandbox):
+    (sandbox / "exists.pdf").write_bytes(b"old")
+
+    escaped = write_blob_file("../outside.pdf", "JVBERg==", dry_run=False)
+    assert escaped["ok"] is False
+    assert "escapes the sandbox" in escaped["error"]
+
+    existing = write_blob_file("exists.pdf", "bmV3", dry_run=False)
+    assert existing["ok"] is False
+    assert "destination exists" in existing["error"]
+    assert (sandbox / "exists.pdf").read_bytes() == b"old"
+
+    invalid = write_blob_file("new.pdf", "not base64", dry_run=False)
+    assert invalid["ok"] is False
+    assert "valid base64" in invalid["error"]
+
+
 def test_prune_empty_dirs_dry_run_and_execute(sandbox):
     (sandbox / "2026.05" / "_by_supplier" / "saas").mkdir(parents=True)
     (sandbox / "2026.05" / "invoice.pdf").write_bytes(b"invoice")
@@ -264,6 +303,7 @@ def test_bindings_are_isolated_handlers():
         (ROUTE_STAT, "stat_path"),
         (ROUTE_PRUNE_EMPTY, "prune_empty_dirs"),
         (ROUTE_WRITE_TEXT, "write_text_file"),
+        (ROUTE_WRITE_BLOB, "write_blob_file"),
         (ROUTE_DUPLICATES, "find_duplicates"),
         (ROUTE_MOVE, "move_to_dir"),
         (ROUTE_MOVE_FILE, "move_file"),
@@ -309,6 +349,12 @@ def test_runtime_executes_from_compiled_registry(tmp_path, monkeypatch):
                  mode="execute", policy=policy)
     assert env["ok"] is True
     assert urirun.result_data(env)["bytes_b64"] == "aGkgdGhlcmU="
+
+    env = v2.run(ROUTE_WRITE_BLOB, registry, payload={"path": "out.pdf", "bytes_b64": "JVBERg==", "dry_run": False},
+                 mode="execute", policy=policy)
+    assert env["ok"] is True
+    assert urirun.result_data(env)["written"] is True
+    assert (tmp_path / "out.pdf").read_bytes() == b"%PDF"
 
     (tmp_path / "a.pdf").write_bytes(b"dup")
     (tmp_path / "sub" / "b.pdf").write_bytes(b"dup")

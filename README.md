@@ -18,6 +18,7 @@ Catalog page: <https://connect.ifuri.com/connectors/mcp-filesystem>
 | `fs://host/dir/command/prune_empty` | remove empty directories under a sandboxed path |
 | `fs://host/duplicates/query/find` | find exact duplicate files by SHA-256 |
 | `fs://host/file/command/write_text` | write a UTF-8 text file under the sandbox root |
+| `fs://host/file/command/write_blob` | write a base64-decoded binary file under the sandbox root |
 | `fs://host/file/command/move_to_dir` | move one file into a sandboxed directory |
 | `fs://host/file/command/move` | move or rename one file to a sandboxed path |
 
@@ -26,7 +27,8 @@ Catalog page: <https://connect.ifuri.com/connectors/mcp-filesystem>
 Everything resolves under `IFURI_FS_ROOT` (default: the current working
 directory). Paths that escape the root are rejected with `ok: false`.
 Query routes never write or delete. `fs://host/dir/command/prune_empty`,
-`fs://host/file/command/write_text`, `fs://host/file/command/move_to_dir` and
+`fs://host/file/command/write_text`, `fs://host/file/command/write_blob`,
+`fs://host/file/command/move_to_dir` and
 `fs://host/file/command/move` are the mutating routes; they default to
 `dry_run: true`. File writes and moves do not overwrite unless
 `overwrite: true`.
@@ -70,6 +72,10 @@ urirun run 'fs://host/dir/command/prune_empty' registry.json \
 
 urirun run 'fs://host/file/command/write_text' registry.json \
   --payload '{"path":"index.php","content":"<?php echo \"ok\";","dry_run":true}' \
+  --execute --allow 'fs://host/*'
+
+urirun run 'fs://host/file/command/write_blob' registry.json \
+  --payload '{"path":"2026-06/invoice.pdf","bytes_b64":"JVBERg==","dry_run":true}' \
   --execute --allow 'fs://host/*'
 ```
 

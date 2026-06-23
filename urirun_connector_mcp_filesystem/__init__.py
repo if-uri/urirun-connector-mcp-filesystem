@@ -14,6 +14,7 @@ from .core import (
     read_file,
     stat_path,
     urirun_bindings,
+    write_blob_file,
     write_text_file,
 )
 
@@ -30,5 +31,6 @@ __all__ = [
     "read_file",
     "stat_path",
     "urirun_bindings",
+    "write_blob_file",
     "write_text_file",
 ]

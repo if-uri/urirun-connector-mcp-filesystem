@@ -21,6 +21,7 @@ read-only; mutating command routes default to dry-run.
 * ``fs://host/path/query/stat``  -- stat a path
 * ``fs://host/dir/command/prune_empty`` -- remove empty directories
 * ``fs://host/file/command/write_text`` -- write a UTF-8 text file
+* ``fs://host/file/command/write_blob`` -- write base64-decoded binary bytes
 * ``fs://host/file/command/move_to_dir`` -- move one file into a directory
 * ``fs://host/file/command/move`` -- move/rename one file to a target path
 
@@ -296,6 +297,69 @@ def write_text_file(
         "dryRun": dry_run,
         "written": not dry_run,
         "bytes": len(raw),
+        "mode": mode,
+    }
+
+
+@conn.handler("file/command/write_blob", isolated=True, external=True,
+              meta={"label": "Write a binary file from base64"})
+def write_blob_file(
+    path: str = "",
+    bytes_b64: str = "",
+    dry_run: bool = True,
+    overwrite: bool = False,
+    make_parents: bool = True,
+    mode: str = "",
+) -> dict[str, Any]:
+    """Write base64-decoded bytes under the sandbox root."""
+    if not path:
+        return _error(path, "path is required")
+    if not bytes_b64:
+        return _error(path, "bytes_b64 is required")
+    target = _resolve(path)
+    if target is None:
+        return _error(path, "path escapes the sandbox root")
+    base = root()
+    try:
+        relative = target.relative_to(base)
+    except ValueError:
+        return _error(path, "path escapes the sandbox root")
+    if target.exists():
+        if target.is_dir():
+            return _error(str(relative), "destination is a directory")
+        if not overwrite:
+            return _error(str(relative), "destination exists")
+    if not make_parents and not target.parent.exists():
+        return _error(str(relative), "destination parent does not exist")
+
+    parsed_mode: int | None = None
+    if mode:
+        try:
+            parsed_mode = int(mode, 8)
+        except ValueError:
+            return _error(str(relative), "mode must be an octal string, for example 0644")
+    try:
+        raw = base64.b64decode(bytes_b64.encode("ascii"), validate=True)
+    except Exception:
+        return _error(str(relative), "bytes_b64 must be valid base64")
+
+    if not dry_run:
+        if make_parents:
+            target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(raw)
+        if parsed_mode is not None:
+            os.chmod(target, parsed_mode)
+    mime, _encoding = mimetypes.guess_type(str(target))
+    return {
+        "ok": True,
+        "connector": CONNECTOR_ID,
+        "path": path,
+        "target": str(relative),
+        "dryRun": dry_run,
+        "written": not dry_run,
+        "bytes": len(raw),
+        "sha256": hashlib.sha256(raw).hexdigest(),
+        "mime": mime or "application/octet-stream",
         "mode": mode,
     }
 
