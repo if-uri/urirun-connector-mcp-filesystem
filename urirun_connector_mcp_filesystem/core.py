@@ -386,30 +386,11 @@ def stat_path(path: str = "") -> dict[str, Any]:
     }
 
 
-@conn.handler("duplicates/query/find", isolated=True, meta={"label": "Find duplicate files"})
-def find_duplicates(
-    path: str = ".",
-    recursive: bool = True,
-    min_size: int = 1,
-    max_files: int = DEFAULT_MAX_DUPLICATE_FILES,
-    include_hidden: bool = False,
-    extensions: str = "",
-) -> dict[str, Any]:
-    """Find exact duplicate files under the sandbox root using SHA-256."""
-    target = _resolve(path)
-    if target is None:
-        return _error(path, "path escapes the sandbox root")
-    if not target.exists():
-        return _error(path, "path does not exist")
-    if not target.is_dir():
-        return _error(path, "path is not a directory")
-
-    base = root()
-    allowed_exts = set(_split_words(extensions))
-    if allowed_exts:
-        allowed_exts = {ext if ext.startswith(".") else f".{ext}" for ext in allowed_exts}
-
-    size_buckets: dict[int, list[Path]] = {}
+def _scan_files_to_buckets(
+    target: "Path", base: "Path", recursive: bool, min_size: int, max_files: int,
+    include_hidden: bool, allowed_exts: set,
+) -> tuple[dict, int, int]:
+    size_buckets: dict[int, list] = {}
     scanned = 0
     skipped = 0
     iterator = target.rglob("*") if recursive else target.glob("*")
@@ -434,49 +415,74 @@ def find_duplicates(
             continue
         scanned += 1
         size_buckets.setdefault(size, []).append(child)
+    return size_buckets, scanned, skipped
 
+
+def _hash_buckets_to_groups(
+    size_buckets: dict, base: "Path",
+) -> tuple[list, int, int]:
     groups: list[dict[str, Any]] = []
     hashed = 0
+    extra_skipped = 0
     for size, files in sorted(size_buckets.items()):
         if len(files) < 2:
             continue
-        hash_buckets: dict[str, list[Path]] = {}
+        hash_buckets: dict[str, list] = {}
         for file_path in files:
             try:
                 digest = _file_hash(file_path)
             except OSError:
-                skipped += 1
+                extra_skipped += 1
                 continue
             hashed += 1
             hash_buckets.setdefault(digest, []).append(file_path)
         for digest, dupes in sorted(hash_buckets.items()):
             if len(dupes) < 2:
                 continue
-            rel_paths = [str(file_path.relative_to(base)) for file_path in sorted(dupes)]
+            rel_paths = [str(fp.relative_to(base)) for fp in sorted(dupes)]
             groups.append({
-                "sha256": digest,
-                "size": size,
-                "count": len(rel_paths),
-                "paths": rel_paths,
-                "reclaimableBytes": size * (len(rel_paths) - 1),
+                "sha256": digest, "size": size, "count": len(rel_paths),
+                "paths": rel_paths, "reclaimableBytes": size * (len(rel_paths) - 1),
             })
+    return groups, hashed, extra_skipped
+
+
+@conn.handler("duplicates/query/find", isolated=True, meta={"label": "Find duplicate files"})
+def find_duplicates(
+    path: str = ".",
+    recursive: bool = True,
+    min_size: int = 1,
+    max_files: int = DEFAULT_MAX_DUPLICATE_FILES,
+    include_hidden: bool = False,
+    extensions: str = "",
+) -> dict[str, Any]:
+    """Find exact duplicate files under the sandbox root using SHA-256."""
+    target = _resolve(path)
+    if target is None:
+        return _error(path, "path escapes the sandbox root")
+    if not target.exists():
+        return _error(path, "path does not exist")
+    if not target.is_dir():
+        return _error(path, "path is not a directory")
+
+    base = root()
+    allowed_exts = set(_split_words(extensions))
+    if allowed_exts:
+        allowed_exts = {ext if ext.startswith(".") else f".{ext}" for ext in allowed_exts}
+
+    size_buckets, scanned, skipped = _scan_files_to_buckets(
+        target, base, recursive, min_size, max_files, include_hidden, allowed_exts)
+    groups, hashed, extra_skipped = _hash_buckets_to_groups(size_buckets, base)
+    skipped += extra_skipped
 
     duplicate_files = sum(group["count"] for group in groups)
     reclaimable = sum(group["reclaimableBytes"] for group in groups)
     return {
-        "ok": True,
-        "connector": CONNECTOR_ID,
-        "path": path,
-        "root": str(base),
-        "recursive": recursive,
-        "scannedFiles": scanned,
-        "hashedFiles": hashed,
-        "skippedFiles": skipped,
-        "groupCount": len(groups),
-        "duplicateFiles": duplicate_files,
-        "reclaimableBytes": reclaimable,
-        "truncated": bool(max_files and scanned >= max_files),
-        "groups": groups,
+        "ok": True, "connector": CONNECTOR_ID, "path": path, "root": str(base),
+        "recursive": recursive, "scannedFiles": scanned, "hashedFiles": hashed,
+        "skippedFiles": skipped, "groupCount": len(groups),
+        "duplicateFiles": duplicate_files, "reclaimableBytes": reclaimable,
+        "truncated": bool(max_files and scanned >= max_files), "groups": groups,
     }
 
 
