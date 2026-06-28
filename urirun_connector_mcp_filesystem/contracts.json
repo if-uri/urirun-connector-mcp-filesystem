@@ -1,0 +1,75 @@
+{
+  "contracts": {
+    "dir/query/list": {
+      "version": "v1", "effect": "query", "reversible": false,
+      "inp": { "path": "?str" },
+      "out": { "connector": "const:mcp-filesystem", "path": "str", "root": "str", "entries": "list" },
+      "errors": ["precondition-unmet"],
+      "examples": [{ "payload": { "path": "." }, "result": { "ok": true, "connector": "mcp-filesystem", "path": ".", "root": "/data", "entries": [] } }]
+    },
+    "dir/command/prune_empty": {
+      "version": "v1", "effect": "command", "reversible": false,
+      "inp": { "path": "?str", "dry_run": "?bool", "max_dirs": "?int" },
+      "out": { "connector": "const:mcp-filesystem", "path": "str", "root": "str", "dryRun": "bool", "removedCount": "int", "errorCount": "int", "truncated": "bool", "removed": "list", "errors": "list" },
+      "errors": ["precondition-unmet", "degraded-backend"],
+      "examples": [{ "payload": { "path": ".", "dry_run": true }, "result": { "ok": true, "connector": "mcp-filesystem", "path": ".", "root": "/data", "dryRun": true, "removedCount": 0, "errorCount": 0, "truncated": false, "removed": [], "errors": [] } }]
+    },
+    "file/query/read": {
+      "version": "v1", "effect": "query", "reversible": false,
+      "inp": { "path": "str", "max_bytes": "?int" },
+      "out": { "connector": "const:mcp-filesystem", "path": "str", "content": "str", "truncated": "bool", "bytes": "int" },
+      "errors": ["precondition-unmet"],
+      "examples": [{ "payload": { "path": "a.txt" }, "result": { "ok": true, "connector": "mcp-filesystem", "path": "a.txt", "content": "hi", "truncated": false, "bytes": 2 } }]
+    },
+    "file/query/blob": {
+      "version": "v1", "effect": "query", "reversible": false,
+      "inp": { "path": "str" },
+      "out": { "connector": "const:mcp-filesystem", "path": "str", "name": "str", "mime": "str", "size": "int", "sha256": "str", "bytes_b64": "str" },
+      "errors": ["precondition-unmet"],
+      "examples": [{ "payload": { "path": "a.bin" }, "result": { "ok": true, "connector": "mcp-filesystem", "path": "a.bin", "name": "a.bin", "mime": "application/octet-stream", "size": 2, "sha256": "abcd", "bytes_b64": "aGk=" } }]
+    },
+    "file/command/write_text": {
+      "version": "v1", "effect": "command", "reversible": false,
+      "inp": { "path": "str", "content": "?str", "dry_run": "?bool" },
+      "out": { "connector": "const:mcp-filesystem", "path": "str", "target": "str", "dryRun": "bool", "written": "bool", "bytes": "int" },
+      "errors": ["precondition-unmet", "degraded-backend"],
+      "examples": [{ "payload": { "path": "a.txt", "content": "hi" }, "result": { "ok": true, "connector": "mcp-filesystem", "path": "a.txt", "target": "a.txt", "dryRun": false, "written": true, "bytes": 2 } }]
+    },
+    "file/command/write_blob": {
+      "version": "v1", "effect": "command", "reversible": false,
+      "inp": { "path": "str", "bytes_b64": "?str", "dry_run": "?bool" },
+      "out": { "connector": "const:mcp-filesystem", "path": "str", "target": "str", "dryRun": "bool", "written": "bool", "bytes": "int" },
+      "errors": ["precondition-unmet", "degraded-backend"],
+      "examples": [{ "payload": { "path": "a.bin", "bytes_b64": "aGk=" }, "result": { "ok": true, "connector": "mcp-filesystem", "path": "a.bin", "target": "a.bin", "dryRun": false, "written": true, "bytes": 2 } }]
+    },
+    "path/query/stat": {
+      "version": "v1", "effect": "query", "reversible": false,
+      "inp": { "path": "str" },
+      "out": { "connector": "const:mcp-filesystem", "path": "str", "type": "str", "size": "int", "modifiedEpoch": "int" },
+      "errors": ["precondition-unmet"],
+      "examples": [{ "payload": { "path": "a.txt" }, "result": { "ok": true, "connector": "mcp-filesystem", "path": "a.txt", "type": "file", "size": 2, "modifiedEpoch": 1700000000 } }]
+    },
+    "duplicates/query/find": {
+      "version": "v1", "effect": "query", "reversible": false,
+      "inp": { "path": "?str", "recursive": "?bool", "max_files": "?int" },
+      "out": { "connector": "const:mcp-filesystem", "path": "str", "root": "str", "recursive": "bool", "scannedFiles": "int", "hashedFiles": "int", "skippedFiles": "int", "groupCount": "int", "duplicateFiles": "int", "reclaimableBytes": "int", "truncated": "bool", "groups": "list" },
+      "errors": ["precondition-unmet"],
+      "examples": [{ "payload": { "path": "." }, "result": { "ok": true, "connector": "mcp-filesystem", "path": ".", "root": "/data", "recursive": true, "scannedFiles": 0, "hashedFiles": 0, "skippedFiles": 0, "groupCount": 0, "duplicateFiles": 0, "reclaimableBytes": 0, "truncated": false, "groups": [] } }]
+    },
+    "file/command/move_to_dir": {
+      "version": "v1", "effect": "command", "reversible": true, "inverseRoute": "file/command/move",
+      "inp": { "path": "str", "target_dir": "str", "dry_run": "?bool" },
+      "out": { "connector": "const:mcp-filesystem", "path": "str", "target_dir": "str", "dryRun": "bool", "moved": "bool", "source": "str", "target": "str", "bytes": "int" },
+      "errors": ["precondition-unmet", "degraded-backend"],
+      "examples": [{ "payload": { "path": "a.txt", "target_dir": "sub" }, "result": { "ok": true, "connector": "mcp-filesystem", "path": "a.txt", "target_dir": "sub", "dryRun": false, "moved": true, "source": "a.txt", "target": "sub/a.txt", "bytes": 2 } }]
+    },
+    "file/command/move": {
+      "version": "v1", "effect": "command", "reversible": true, "inverseRoute": "file/command/move",
+      "inp": { "path": "str", "target_path": "str", "dry_run": "?bool" },
+      "out": { "connector": "const:mcp-filesystem", "path": "str", "target_path": "str", "dryRun": "bool", "moved": "bool", "source": "str", "target": "str", "bytes": "int" },
+      "errors": ["precondition-unmet", "degraded-backend"],
+      "examples": [{ "payload": { "path": "a.txt", "target_path": "b.txt" }, "result": { "ok": true, "connector": "mcp-filesystem", "path": "a.txt", "target_path": "b.txt", "dryRun": false, "moved": true, "source": "a.txt", "target": "b.txt", "bytes": 2 } }]
+    }
+  },
+  "wires": []
+}
